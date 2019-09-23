@@ -1,0 +1,22 @@
+{
+  "name": "watson-speech-examples",
+  "version": "1.1.2",
+  "description": "Examples showing the IBM Watson Speech Javascript SDK in action.",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "cacheDirectories": [
+    "node_modules"
+  ],
+  "dependencies": {
+    "dotenv": "^6.0.0",
+    "express": "^4.16.3",
+    "express-rate-limit": "^3.2.0",
+    "express-secure-only": "^0.2.1",
+    "watson-developer-cloud": "^3.10.0"
+  },
+  "engines": {
+    "node": ">=6"
+  },
+  "license": "Apache-2.0"
+}

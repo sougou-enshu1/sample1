@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>Watson STT client</title>
+  <link rel="stylesheet" href="style.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+</head>
+
+<body onload="hanakoStart()">
+
+<div class="container">
+<h3>セッティング</h3>
+入力モデル: <select id="model"></select><br>
+出力モデル: <select id="voice"></select><br>
+話し相手: <input id="target" value="花子" type="text" style="width:100px;">
+最低文字数: <input id="wordcount" type="number" value="3" style="width:30px;">以上<br>
+デバッグ: <select id="debug">
+  <option value="OFF" selected>OFF</option>
+  <option value="ON">ON</option>
+</select>
+<hr />
+音声入力:
+<button id="button" style="font-weight:bold;">マイク開始</button>
+<button id="stop" style="font-weight:bold;">マイク停止</button><br><br>
+キーボード入力:
+<input type="text" data-name="message" size="50" />
+<hr />
+<div data-name="chat" id="chat"></div>
+
+<script src="./watson-speech_0.36.0_yng_20180923.js"></script>
+<script src="./jquery-3.3.1.min.js"></script>
+
+<script type="text/javascript">
+
+function hanakoStart() {
+  console.log("Hanako-san starting ...");
+	$("[data-name='message']").keypress(press);
+  getRespond("", targetName, "greeting");
+}
+
+$("#button").prop("disabled", false);
+$("#stop").prop("disabled", true);
+
+// 接続先URI -> Node-REDのurl + conv
+var url = "https://YOUR-NodeRED-URL/conv";  // replace Node-RED url
+
+var targetName = $("#target").val();
+var wordcount = $('#wordcount').val();
+
+var postData = {
+	input: '',
+	context: { timezone: "Asia/Tokyo" },
+	alternate_intents: true,
+};
+
+function chat(message) {
+  // 12件まで残す
+  var chats = $("[data-name='chat']").find("div");
+  while (chats.length > 11) {
+     chats = chats.last().remove();
+  }
+  if ($('#chat')) {
+     $("<div>"+message+"</div>").insertAfter('#chat');
+  } else {
+     $('#chat').html($(message).wrap('<div />'));
+  }
+}
+
+function getRespond(message, targetName, mode) {
+
+	console.log("DETECT"+"("+mode+"): ", message);
+	console.log("SENDING ... -> ", message);
+  if (message !== "") chat("YOU " + message);
+
+	postData.input = message;
+
+  var debug = $("#debug").val();
+
+  if ( debug === "ON" ) {
+	  console.log("=== request ===");
+	  console.log(JSON.stringify(postData, undefined, 3));
+	  console.log("-------------------");
+	}
+
+	$.post({
+	   url: url,
+	   data: postData,
+	}).done(function (data) {
+		if ( debug === "ON" ) {
+	   	console.log("==== response ====");
+	   	console.log(JSON.stringify(data, undefined, 3));
+			console.log("-------------------");
+		}
+
+	  postData.context = data.context;
+	  data = data.output;
+	  var watson = "<span style=\"color:red;\">" + targetName + "</span>";
+	  chat(watson + " " + data);
+
+    //dataが<html>タグを含む場合は、『こちらを参照してください』と言う
+   	var htmlRe = /^<html>.*/i;
+   	if (htmlRe.test(data)) data = "こちらを参照してください";
+   	getTtsToken().then(function (token) {
+   	  WatsonSpeech.TextToSpeech.synthesize({
+   	    text: data,
+   	    voice: document.querySelector('#voice').value,
+   	    token: token
+   	  });
+   	});
+ 	}).fail(function() {
+   	  console.log("ERROR: oh my god");
+ 	});
+}
+
+// キー押下時
+function press(event) {
+  targetName = $("#target").val();
+  wordcount = $('#wordcount').val();
+  // キーがEnterか判定
+  if (event && event.which == 13) {
+    // メッセージ取得
+    var message = $("[data-name='message']").val();
+    // メッセージ消去
+    $("[data-name='message']").val("");
+
+		if ((mylength = message.length) >= wordcount) {
+			getRespond(message, targetName, "i");
+		}
+    //if (message) {
+  	//  getRespond(message, targetName, "i");
+    //}
+  }
+}
+
+function getSttToken() {
+  return fetch('/api/stt-credentials').then((res) => {
+    if (res.status !== 200) {
+      throw new Error('Error retrieving auth token');
+    }
+    return res.json();
+  })
+}
+
+// fetch the models and populate the dropdown
+getSttToken()
+  .then(function (token) {
+    return WatsonSpeech.SpeechToText.getModels({
+      token: token,
+      url: token.serviceUrl
+    });
+  }).then(function (models) {
+    var dropdown = document.querySelector('#model');
+    models.forEach(function (m) {
+      var o = document.createElement('option');
+      o.value = m.name;
+      o.textContent = m.name;
+      if (m.name == 'ja-JP_BroadbandModel') {
+        o.selected = true;
+      }
+      dropdown.appendChild(o);
+    });
+  }).catch(console.error.bind(console));
+
+function getTtsToken() {
+  return fetch('/api/tts-credentials').then((res) => {
+    if (res.status !== 200) {
+      throw new Error('Error retrieving auth token');
+    }
+    return res.json();
+  })
+}
+
+getTtsToken()
+  .then(function (token) {
+    return WatsonSpeech.TextToSpeech.getVoices({
+      token: token,
+      url: token.TtsServiceUrl
+    })
+  }).then(function (voices) {
+    var dropdown = document.querySelector('#voice');
+    voices.forEach(function (v) {
+      var o = document.createElement('option');
+      o.value = v.name;
+      o.textContent = v.name;
+      if (v.name == 'ja-JP_EmiV3Voice') {
+        o.selected = true;
+      }
+      dropdown.appendChild(o);
+    });
+  }).catch(console.error.bind(console));
+
+// recognize the text using the chosen model
+document.querySelector('#button').onclick = function () {
+  console.log("MIC Started...");
+  $("#button").prop("disabled", true);
+  $("#stop").prop("disabled", false);
+  getSttToken().then(function (token) {
+	  var stream = WatsonSpeech.SpeechToText.recognizeMicrophone({
+      token: token,
+      url: token.serviceUrl,
+      model: document.querySelector('#model').value,
+		  inactivity_timeout: 300, // timeout value between Watson Speech-to-Text and this javascript
+	    object_mode: false
+    });
+
+    stream.setEncoding('utf8');
+
+    stream.on('error', function(err) {
+        console.log(err);
+    });
+
+    stream.on('data', function(data) {
+	 	  console.log("DETECT(m): ", data);
+      wordcount = $('#wordcount').val();
+      targetName = $("#target").val();
+
+	    var regex = new RegExp(".*(" + targetName + ")(さん|くん|君|ちゃん)(.*)","i");
+		  data = data.replace(regex,"$1$3");
+		  regex = new RegExp(".*" + targetName + "(.*)","i");
+		  if (regex.test(data)) {
+		  	var message = data.replace(regex, "$1");
+		  	if ((mylength = message.length) > wordcount) {
+		  		getRespond(message, targetName, "m");
+		  	}
+		  }
+	  });
+
+    //document.querySelector('#stop').onclick = stream.stop.bind(stream);
+	  document.querySelector('#stop').onclick = function() { micStop();};
+
+	  function micStop() {
+	  	 stream.stop();
+	  	 console.log("MIC Stopped...");
+       $("#button").prop("disabled", false);
+       $("#stop").prop("disabled", true);
+	  }
+
+  }).catch(function(error) {
+      console.log(error);
+  });
+};
+</script>
+</div>
+</body>
+</html>
